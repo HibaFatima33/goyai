@@ -1,317 +1,238 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import type { Tile } from "@/types/aac";
 
-type Pictogram = {
-  _id: number;
-};
+type Suggestion = { urdu: string; english: string };
+type Stage = "suggestions" | "edit" | "confirmed";
 
-type PersonTile = {
-  tileId: string;
-  search: string;
-  label: string;
-};
+const KEY = "goyai-selected-tiles";
+const CORAL = "#E76F51";
 
-const personTiles: PersonTile[] = [
-  { tileId: "person_me", search: "I", label: "I / Me" },
-  { tileId: "person_you", search: "you", label: "You" },
-  { tileId: "person_mom", search: "mother", label: "Mom" },
-  { tileId: "person_dad", search: "father", label: "Dad" },
-  { tileId: "person_brother", search: "brother", label: "Brother" },
-  { tileId: "person_sister", search: "sister", label: "Sister" },
-  { tileId: "person_grandmother", search: "grandmother", label: "Grandmother" },
-  { tileId: "person_grandfather", search: "grandfather", label: "Grandfather" },
-  { tileId: "person_teacher", search: "teacher", label: "Teacher" },
-  { tileId: "person_friend", search: "friend", label: "Friend" },
-  { tileId: "person_doctor", search: "doctor", label: "Doctor" },
-  { tileId: "person_caregiver", search: "caregiver", label: "Caregiver" },
-  { tileId: "person_baby", search: "baby", label: "Baby" },
-  { tileId: "person_boy", search: "boy", label: "Boy" },
-  { tileId: "person_girl", search: "girl", label: "Girl" },
-  { tileId: "person_man", search: "man", label: "Man" },
-  { tileId: "person_woman", search: "woman", label: "Woman" },
-  { tileId: "person_family", search: "family", label: "Family" },
-  { tileId: "person_people", search: "people", label: "People" },
-  { tileId: "person_child", search: "child", label: "Child" },
-  { tileId: "person_he", search: "he", label: "He" },
-  { tileId: "person_she", search: "she", label: "She" },
-  { tileId: "person_they", search: "they", label: "They" },
-  { tileId: "person_classmate", search: "classmate", label: "Classmate" },
-  { tileId: "person_therapist", search: "therapist", label: "Therapist" },
-  { tileId: "person_visitor", search: "visitor", label: "Visitor" },
-];
+function generateMockSuggestions(selected: Tile[], round: number): Suggestion[] {
+  const english = selected.map((t) => t.english.trim()).filter(Boolean);
+  const urdu = selected.map((t) => t.urdu.trim()).filter(Boolean);
+  const words = english.join(" ");
+  const urduWords = urdu.join(" ");
+  // These are DEMO sentences, not AI output or a verified translation.
+  const sets: Suggestion[][] = [
+    [
+      { english: words + ".", urdu: urduWords + "۔" },
+      { english: "Please, " + words.toLowerCase() + ".", urdu: "براہ کرم، " + urduWords + "۔" },
+      { english: "I want to say: " + words + ".", urdu: "میں کہنا چاہتا/چاہتی ہوں: " + urduWords + "۔" },
+    ],
+    [
+      { english: "Can you help me? " + words + ".", urdu: "کیا آپ میری مدد کر سکتے ہیں؟ " + urduWords + "۔" },
+      { english: "Please listen: " + words + ".", urdu: "براہ کرم سنیں: " + urduWords + "۔" },
+      { english: "I mean: " + words + ".", urdu: "میرا مطلب ہے: " + urduWords + "۔" },
+    ],
+  ];
+  return sets[round % sets.length];
+}
 
 export default function ReviewPage() {
-  const [wordIndex, setWordIndex] = useState(0);
-  const [results, setResults] = useState<Pictogram[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const [selectedId, setSelectedId] =
-    useState<number | null>(null);
-
-  const [saving, setSaving] = useState(false);
-
-  const [message, setMessage] = useState("");
-
-  const currentTile = personTiles[wordIndex];
+  const router = useRouter();
+  const [selected, setSelected] = useState<Tile[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [round, setRound] = useState(0);
+  const [choice, setChoice] = useState<number | null>(null);
+  const [stage, setStage] = useState<Stage>("suggestions");
+  const [draftEnglish, setDraftEnglish] = useState("");
+  const [draftUrdu, setDraftUrdu] = useState("");
+  const [finalSentence, setFinalSentence] = useState<Suggestion | null>(null);
+  const [speechLanguage, setSpeechLanguage] = useState<"ur-PK" | "en-US">("ur-PK");
+  const [speechMessage, setSpeechMessage] = useState("");
 
   useEffect(() => {
-    async function loadOptions() {
-      setLoading(true);
-      setSelectedId(null);
-      setMessage("");
-
-      try {
-        const response = await fetch(
-          `https://api.arasaac.org/api/pictograms/en/search/${encodeURIComponent(
-            currentTile.search
-          )}`
-        );
-
-        if (!response.ok) {
-          throw new Error("ARASAAC search failed");
-        }
-
-        const data: Pictogram[] =
-          await response.json();
-
-        setResults(data.slice(0, 6));
-      } catch (error) {
-        console.error(error);
-        setResults([]);
-      } finally {
-        setLoading(false);
+    try {
+      const saved = sessionStorage.getItem(KEY);
+      const parsed: unknown = saved ? JSON.parse(saved) : [];
+      if (Array.isArray(parsed)) {
+        setSelected(parsed.filter((x): x is Tile =>
+          !!x && typeof x === "object" &&
+          typeof x.id === "string" &&
+          typeof x.english === "string" &&
+          typeof x.urdu === "string" &&
+          typeof x.category === "string"
+        ));
       }
+    } catch {
+      setSelected([]);
     }
+    setLoaded(true);
+  }, []);
 
-    loadOptions();
-  }, [currentTile.search]);
+  const suggestions = useMemo(() => generateMockSuggestions(selected, round), [selected, round]);
 
-  async function saveSelected() {
-    if (selectedId === null) {
-      setMessage("Please choose a pictogram first.");
+  function selectSuggestion(index: number) {
+    setChoice(index);
+    setSpeechMessage("");
+  }
+
+  function editSuggestion() {
+    if (choice === null) return;
+    setDraftEnglish(suggestions[choice].english);
+    setDraftUrdu(suggestions[choice].urdu);
+    setStage("edit");
+  }
+
+  function confirmSuggestion() {
+    if (choice === null) return;
+    setFinalSentence(suggestions[choice]);
+    setStage("confirmed");
+  }
+
+  function saveCorrection() {
+    if (!draftEnglish.trim() && !draftUrdu.trim()) return;
+    setFinalSentence({ english: draftEnglish.trim(), urdu: draftUrdu.trim() });
+    setStage("confirmed");
+  }
+
+  function tryDifferent() {
+    setRound((r) => r + 1);
+    setChoice(null);
+    setStage("suggestions");
+  }
+
+  function speak() {
+    const sentence = finalSentence;
+    if (!sentence) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setSpeechMessage("Speech is not supported in this browser.");
       return;
     }
-
-    setSaving(true);
-    setMessage("");
-
-    try {
-      const response = await fetch(
-        "/api/save-pictogram",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            tileId: currentTile.tileId,
-            pictogramId: selectedId,
-            category: "person",
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || "Save failed"
-        );
-      }
-
-      setMessage(
-        `✓ Saved ${currentTile.label}!`
-      );
-    } catch (error) {
-      console.error(error);
-
-      setMessage(
-        "Could not save pictogram."
-      );
-    } finally {
-      setSaving(false);
+    const text = speechLanguage === "ur-PK" ? sentence.urdu : sentence.english;
+    if (!text) {
+      setSpeechMessage("No text available in this language.");
+      return;
     }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = speechLanguage;
+    utterance.rate = 0.85;
+    const voices = window.speechSynthesis.getVoices();
+    const matchingVoice = voices.find((v) => v.lang.toLowerCase().startsWith(speechLanguage.slice(0, 2)));
+    if (matchingVoice) utterance.voice = matchingVoice;
+    if (!matchingVoice && speechLanguage === "ur-PK") {
+      setSpeechMessage("No Urdu voice detected. Pronunciation may be incorrect.");
+    } else {
+      setSpeechMessage("");
+    }
+    utterance.onerror = () => setSpeechMessage("Speech could not play. Try English or check installed voices.");
+    window.speechSynthesis.speak(utterance);
   }
 
-  function nextWord() {
-    if (
-      wordIndex <
-      personTiles.length - 1
-    ) {
-      setWordIndex(
-        (current) => current + 1
-      );
-    }
-  }
-
-  function previousWord() {
-    if (wordIndex > 0) {
-      setWordIndex(
-        (current) => current - 1
-      );
-    }
-  }
+  const btn = "min-h-12 rounded-xl px-5 py-3 text-base font-bold focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#3F241C]";
+  if (!loaded) return <main className="p-8 text-[#3F241C]">Loading review…</main>;
 
   return (
-    <main className="min-h-screen bg-[#FFFDF9] p-8 text-[#3F241C]">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">
-            ARASAAC Pictogram Review
-          </h1>
-
-          <p className="mt-2 text-[#8A6557]">
-            Choose the clearest pictogram for each AAC concept.
-          </p>
-        </div>
-
-        <div className="mb-6 flex items-center justify-between rounded-2xl bg-[#FFF0E5] p-5">
+    <main className="min-h-dvh bg-[#FFFDF9] px-3 py-5 text-[#3F241C] sm:px-6">
+      <div className="mx-auto max-w-5xl space-y-5">
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-[#9B7A6D]">
-              PERSON CATEGORY
-            </p>
-
-            <h2 className="mt-1 text-3xl font-bold">
-              {currentTile.label}
-            </h2>
-
-            <p className="mt-1 text-sm text-[#8A6557]">
-              Searching ARASAAC for:{" "}
-              {currentTile.search}
-            </p>
+            <h1 className="text-2xl font-extrabold">GOYAI</h1>
+            <p className="text-[#8A6557]">Review your message · اپنا پیغام دیکھیں</p>
           </div>
+          <button type="button" onClick={() => { window.speechSynthesis?.cancel(); router.push("/"); }}
+            className={`${btn} border-2 border-[#E7D2BE] bg-white`}>← Back to board</button>
+        </header>
 
-          <p className="font-semibold">
-            {wordIndex + 1} /{" "}
-            {personTiles.length}
-          </p>
-        </div>
-
-        {loading ? (
-          <div className="flex h-72 items-center justify-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#E7D2BE] border-t-[#E76F51]" />
-          </div>
+        {selected.length === 0 ? (
+          <section className="rounded-2xl border-2 border-[#E7D2BE] bg-white p-6 text-center">
+            <h2 className="text-xl font-bold">No pictograms selected</h2>
+            <p className="my-3">Go back and choose some pictures first.</p>
+            <button type="button" onClick={() => router.push("/")} className={`${btn} bg-[#E76F51] text-white`}>Choose pictograms</button>
+          </section>
         ) : (
-          <div className="grid grid-cols-3 gap-5">
-            {results.map(
-              (pictogram) => {
-                const imageUrl =
-                  `https://static.arasaac.org/pictograms/${pictogram._id}/${pictogram._id}_500.png`;
-
-                const selected =
-                  selectedId ===
-                  pictogram._id;
-
-                return (
-                  <button
-                    key={
-                      pictogram._id
-                    }
-                    type="button"
-                    onClick={() =>
-                      setSelectedId(
-                        pictogram._id
-                      )
-                    }
-                    className={`rounded-2xl border-4 bg-white p-5 transition ${
-                      selected
-                        ? "border-[#E76F51] shadow-lg"
-                        : "border-[#E7D2BE] hover:border-[#F4A261]"
-                    }`}
-                  >
-                    <div className="relative mx-auto h-40 w-40">
-                      <Image
-                        src={
-                          imageUrl
-                        }
-                        alt={`${currentTile.label} pictogram`}
-                        fill
-                        sizes="160px"
-                        className="object-contain"
-                        unoptimized
-                      />
+          <>
+            <section className="rounded-2xl border-2 border-[#E7D2BE] bg-white p-4">
+              <h2 className="mb-3 text-lg font-bold">Your selected pictograms</h2>
+              <div className="flex flex-wrap gap-3">
+                {selected.map((tile, i) => (
+                  <div key={`${tile.id}-${i}`} className="flex min-w-[110px] items-center gap-2 rounded-xl bg-[#FFF0EB] p-2">
+                    <div className="relative h-12 w-12 shrink-0">
+                      <Image src={`/pictograms/${tile.category}/${tile.id}.webp`} alt={tile.english} fill sizes="48px" className="object-contain" />
                     </div>
+                    <div><p className="font-bold">{tile.english}</p><p lang="ur" dir="rtl">{tile.urdu}</p></div>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-                    <p className="mt-3 font-bold">
-                      ARASAAC #
-                      {
-                        pictogram._id
-                      }
-                    </p>
-
-                    {selected && (
-                      <p className="mt-2 font-bold text-[#E76F51]">
-                        ✓ Selected
-                      </p>
-                    )}
-                  </button>
-                );
-              }
+            {stage === "suggestions" && (
+              <section className="space-y-4 rounded-2xl border-2 border-[#E7D2BE] bg-[#FFFCF8] p-4">
+                <div>
+                  <h2 className="text-xl font-bold">Choose a suggestion</h2>
+                  <p className="text-sm text-[#8A6557]">Demo suggestions only — these are not AI-generated or checked translations.</p>
+                </div>
+                <div className="grid gap-3">
+                  {suggestions.map((item, i) => (
+                    <button key={`${round}-${i}`} type="button" onClick={() => selectSuggestion(i)}
+                      aria-pressed={choice === i}
+                      className={`min-h-24 rounded-xl border-2 p-4 text-left focus-visible:outline-4 focus-visible:outline-[#3F241C] ${choice === i ? "border-[#E76F51] bg-[#FFF0EB]" : "border-[#E7D2BE] bg-white"}`}>
+                      <span className="text-xs font-bold text-[#8A6557]">Option {i + 1}{choice === i ? " ✓ Selected" : ""}</span>
+                      <p dir="rtl" lang="ur" className="mt-1 text-right text-xl font-bold leading-relaxed">{item.urdu}</p>
+                      <p className="mt-1 text-base">{item.english}</p>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button type="button" onClick={confirmSuggestion} disabled={choice === null}
+                    className={`${btn} bg-[#E76F51] text-white disabled:opacity-40`}>Confirm ✓</button>
+                  <button type="button" onClick={editSuggestion} disabled={choice === null}
+                    className={`${btn} border-2 border-[#E7D2BE] bg-white disabled:opacity-40`}>Correct / Edit ✎</button>
+                  <button type="button" onClick={tryDifferent}
+                    className={`${btn} border-2 border-[#E7D2BE] bg-white`}>Try Different ↻</button>
+                  <button type="button" onClick={() => router.push("/")}
+                    className={`${btn} border-2 border-[#E7D2BE] bg-white`}>Change pictograms</button>
+                </div>
+              </section>
             )}
-          </div>
+
+            {stage === "edit" && (
+              <section className="space-y-4 rounded-2xl border-2 border-[#E7D2BE] bg-white p-4">
+                <h2 className="text-xl font-bold">Correct your sentence</h2>
+                <p className="text-sm text-[#8A6557]">Editing is a demo feature. A caregiver may assist with typing.</p>
+                <label className="block font-semibold">Urdu
+                  <textarea dir="rtl" lang="ur" value={draftUrdu} onChange={(e) => setDraftUrdu(e.target.value)}
+                    rows={3} className="mt-2 w-full rounded-xl border-2 border-[#E7D2BE] p-3 text-xl" />
+                </label>
+                <label className="block font-semibold">English
+                  <textarea value={draftEnglish} onChange={(e) => setDraftEnglish(e.target.value)}
+                    rows={3} className="mt-2 w-full rounded-xl border-2 border-[#E7D2BE] p-3 text-lg" />
+                </label>
+                <div className="flex flex-wrap gap-3">
+                  <button type="button" onClick={saveCorrection} disabled={!draftEnglish.trim() && !draftUrdu.trim()}
+                    className={`${btn} bg-[#E76F51] text-white disabled:opacity-40`}>Save and Confirm ✓</button>
+                  <button type="button" onClick={() => setStage("suggestions")} className={`${btn} border-2 border-[#E7D2BE]`}>Cancel</button>
+                </div>
+              </section>
+            )}
+
+            {stage === "confirmed" && finalSentence && (
+              <section className="space-y-4 rounded-2xl border-2 border-[#E7D2BE] bg-white p-5 text-center">
+                <h2 className="text-xl font-bold">Your confirmed message ✓</h2>
+                <p dir="rtl" lang="ur" className="text-2xl font-bold leading-relaxed">{finalSentence.urdu}</p>
+                <p className="text-lg">{finalSentence.english}</p>
+                <fieldset className="flex justify-center gap-4">
+                  <legend className="mb-2 w-full font-semibold">Speech language</legend>
+                  <label className="flex items-center gap-2"><input type="radio" name="speech-lang" checked={speechLanguage === "ur-PK"} onChange={() => setSpeechLanguage("ur-PK")} /> Urdu</label>
+                  <label className="flex items-center gap-2"><input type="radio" name="speech-lang" checked={speechLanguage === "en-US"} onChange={() => setSpeechLanguage("en-US")} /> English</label>
+                </fieldset>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button type="button" onClick={speak} className={`${btn} bg-[#E76F51] text-white`}>🔊 Speak</button>
+                  <button type="button" onClick={() => window.speechSynthesis?.cancel()} className={`${btn} border-2 border-[#E7D2BE]`}>Stop speech</button>
+                  <button type="button" onClick={() => { setStage("suggestions"); setChoice(null); setFinalSentence(null); }} className={`${btn} border-2 border-[#E7D2BE]`}>Review again</button>
+                  <button type="button" onClick={() => router.push("/")} className={`${btn} border-2 border-[#E7D2BE]`}>New message</button>
+                </div>
+                {speechMessage && <p role="status" className="text-sm text-[#8A6557]">{speechMessage}</p>}
+              </section>
+            )}
+          </>
         )}
-
-        {!loading &&
-          results.length === 0 && (
-            <div className="rounded-xl bg-white p-10 text-center">
-              No pictograms found for{" "}
-              {currentTile.label}.
-            </div>
-          )}
-
-        <div className="mt-7 flex flex-col items-center">
-          <button
-            type="button"
-            onClick={saveSelected}
-            disabled={
-              selectedId === null ||
-              saving
-            }
-            className="min-h-14 min-w-[260px] rounded-xl bg-[#E76F51] px-8 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {saving
-              ? "Saving..."
-              : "✓ Select & Save"}
-          </button>
-
-          {message && (
-            <p className="mt-3 font-bold text-[#6F4E42]">
-              {message}
-            </p>
-          )}
-        </div>
-
-        <div className="mt-8 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={previousWord}
-            disabled={
-              wordIndex === 0
-            }
-            className="rounded-xl bg-[#E76F51] px-6 py-3 font-bold text-white disabled:opacity-40"
-          >
-            ← Previous
-          </button>
-
-          <p className="text-sm text-[#8A6557]">
-            Choose → Save → Next
-          </p>
-
-          <button
-            type="button"
-            onClick={nextWord}
-            disabled={
-              wordIndex ===
-              personTiles.length - 1
-            }
-            className="rounded-xl bg-[#E76F51] px-6 py-3 font-bold text-white disabled:opacity-40"
-          >
-            Next →
-          </button>
-        </div>
+        <p className="text-center text-xs text-[#8A6557]">GOYAI frontend demo · AI integration coming later</p>
       </div>
     </main>
   );
