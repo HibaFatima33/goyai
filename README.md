@@ -16,9 +16,26 @@ The research question is whether the motor-action savings reported for English A
 
 See [proposal.pdf](proposal.pdf) for the full proposal.
 
-## Status
+## Project structure
 
-Early stage. The tech stack and project structure have not been decided yet.
+- [backend/](backend/): a FastAPI service that turns a tile selection into ranked Urdu sentences
+  using a language model served locally by Ollama. See [backend/README.md](backend/README.md)
+  for setup, the API and configuration.
+- [frontend/](frontend/): the tablet interface, a Next.js app.
+
+## Evaluation
+
+The backend includes a benchmark for comparing language models on the task. It holds 125 cases:
+93 monolingual Urdu and 32 Urdu-English code-mixed, each a tile selection with reference
+sentences. The harness runs the suggestion pipeline for any set of Ollama models with a fixed
+seed, and reports how often a reference sentence appears among the top candidates, how often the
+model returns usable output, how often it offers a code-mixed sentence, and response latency,
+for each split. It also produces a rating sheet with the model names hidden, so native Urdu
+speakers can score meaning and fluency, and a script that combines the completed ratings into
+per-model scores.
+
+See the Evaluation section of [backend/README.md](backend/README.md#evaluation) for the commands
+and the metric definitions.
 
 ## Contributing
 
