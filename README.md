@@ -23,20 +23,6 @@ See [proposal.pdf](proposal.pdf) for the full proposal.
   for setup, the API and configuration.
 - [frontend/](frontend/): the tablet interface, a Next.js app.
 
-## Evaluation
-
-The backend includes a benchmark for comparing language models on the task. It holds 125 cases:
-93 monolingual Urdu and 32 Urdu-English code-mixed, each a tile selection with reference
-sentences. The harness runs the suggestion pipeline for any set of Ollama models with a fixed
-seed, and reports how often a reference sentence appears among the top candidates, how often the
-model returns usable output, how often it offers a code-mixed sentence, and response latency,
-for each split. It also produces a rating sheet with the model names hidden, so native Urdu
-speakers can score meaning and fluency, and a script that combines the completed ratings into
-per-model scores.
-
-See the Evaluation section of [backend/README.md](backend/README.md#evaluation) for the commands
-and the metric definitions.
-
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).

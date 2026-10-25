@@ -24,7 +24,6 @@ checkpoints/
 *.bin
 *.pt
 *.onnx
-backend/evaluation/results/
 
 # --- Python ---
 __pycache__/
