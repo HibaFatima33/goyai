@@ -16,9 +16,12 @@ The research question is whether the motor-action savings reported for English A
 
 See [proposal.pdf](proposal.pdf) for the full proposal.
 
-## Status
+## Project structure
 
-Early stage. The tech stack and project structure have not been decided yet.
+- [backend/](backend/): a FastAPI service that turns a tile selection into ranked Urdu sentences
+  using a language model served locally by Ollama. See [backend/README.md](backend/README.md)
+  for setup, the API and configuration.
+- [frontend/](frontend/): the tablet interface, a Next.js app.
 
 ## Contributing
 
