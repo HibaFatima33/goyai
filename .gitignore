@@ -81,3 +81,5 @@ Thumbs.db
 
 # --- Documents
 docs/
+# --- Original pictogram PNG files ---
+/frontend/public/pictograms/**/*.png
